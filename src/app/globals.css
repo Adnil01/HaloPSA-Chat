@@ -1,0 +1,6 @@
+* { box-sizing: border-box; }
+:root { color-scheme: light dark; }
+html, body { min-height: 100%; margin: 0; }
+body { background: #f8fafc; color: #0f172a; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+@media (prefers-color-scheme: dark) { body { background: #0f172a; color: #e2e8f0; } }
+button, textarea { font: inherit; }
