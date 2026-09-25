@@ -99,3 +99,10 @@ export async function withMcp<T>(operation: (client: Client) => Promise<T>): Pro
 
 export async function listMcpTools() { return withMcp(async client => (await client.listTools()).tools as McpTool[]); }
 export async function callMcpTool(name: string, args: Record<string, unknown>) { return withMcp(client => client.callTool({ name, arguments: args })); }
+
+const body = new URLSearchParams({
+  grant_type: "client_credentials",
+  client_id: requiredEnv("HALOPSA_CLIENT_ID"),
+  client_secret: requiredEnv("HALOPSA_CLIENT_SECRET"),
+  scope: process.env.HALO_SCOPE || "all",
+});
