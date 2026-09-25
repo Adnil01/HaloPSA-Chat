@@ -3,7 +3,7 @@
 import { FormEvent, KeyboardEvent, useMemo, useState } from "react";
 
 type Message = { role: "user" | "assistant"; content: string };
-type Confirmation = { token: string; toolName: string; args: Record<string, unknown>; summary: string };
+type Confirmation = { token: string; toolName: string; args?: Record<string, unknown>; summary: string };
 
 export default function Chat() {
   const params = useMemo(() => {
@@ -35,7 +35,7 @@ export default function Chat() {
         ticketDescription: params.ticketDescription,
         contextSignature: params.contextSignature,
         messages: history,
-        approvedAction: approvedAction ? { token: approvedAction.token, toolName: approvedAction.toolName, args: approvedAction.args } : undefined,
+        approvedAction: approvedAction ? { token: approvedAction.token, toolName: approvedAction.toolName } : undefined,
       }),
     });
     const data = await response.json();
