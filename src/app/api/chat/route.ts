@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import OpenAI from "openai";
-import { callMcpTool, getHaloTicket, listMcpTools, type McpTool } from "@/lib/mcp";
+import { callMcpTool, listMcpTools, type McpTool } from "@/lib/mcp";
 import { isAllowedTool, isWriteTool, mergeMcpTools } from "@/lib/tool-catalog";
 
 export const runtime = "nodejs";
@@ -132,9 +132,11 @@ export async function POST(request: Request) {
     const approved = body.approvedAction as ApprovedAction | undefined;
     if (approved && (!validText(approved.token, 2000) || !validText(approved.toolName, 100) || !approved.args || typeof approved.args !== "object")) return invalidBody("Invalid approval data.");
 
+    const ticketTool = process.env.MCP_GET_TICKET_TOOL || "get_one_ticket";
+    const ticketLookupId = ticketTool === "get_one_ticket" ? Number(body.ticketId) : body.ticketId;
     const [liveTools, ticket] = await Promise.all([
       listMcpTools(),
-      getHaloTicket(body.ticketId),
+      callMcpTool(ticketTool, { ticket_id: ticketLookupId }),
     ]);
     const derivedAgentId = body.agentId || findContextValue(ticket, ["agent_id", "assigned_agent_id", "agentid", "assignedagentid"]);
     const agentTool = process.env.MCP_GET_AGENT_TOOL;
