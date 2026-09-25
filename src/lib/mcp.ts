@@ -37,6 +37,7 @@ async function getHaloAccessToken(): Promise<string> {
       grant_type: "client_credentials",
       client_id: requiredEnv("HALOPSA_CLIENT_ID"),
       client_secret: requiredEnv("HALOPSA_CLIENT_SECRET"),
+      scope: process.env.HALO_SCOPE || "all",
     });
 
     const response = await fetch(tokenUrl, {
@@ -57,34 +58,6 @@ async function getHaloAccessToken(): Promise<string> {
   }
   })();
   try { return await tokenPromise; } finally { tokenPromise = undefined; }
-}
-
-export async function getHaloTicket(ticketId: string | number) {
-  const id = String(ticketId);
-  if (!/^\d+$/.test(id)) throw new Error("The HaloPSA ticket ID must be numeric");
-
-  const configuredBaseUrl = process.env.HALOPSA_BASE_URL;
-  const baseUrl = configuredBaseUrl
-    ? configuredBaseUrl.replace(/\/+$/, "").replace(/\/api$/i, "")
-    : new URL(requiredEnv("HALO_TOKEN_URL")).origin;
-  const ticketUrl = new URL(`${baseUrl}/api/Tickets/${encodeURIComponent(String(Number(id)))}`);
-  ticketUrl.searchParams.set("includedetails", "true");
-
-  const token = await getHaloAccessToken();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs());
-  try {
-    const response = await fetch(ticketUrl, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(`Halo ticket request failed (${response.status})`);
-    return await response.json() as unknown;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export async function withMcp<T>(operation: (client: Client) => Promise<T>): Promise<T> {
