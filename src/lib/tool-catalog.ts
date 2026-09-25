@@ -49,7 +49,7 @@ export const CUSTOM_ACTION_TOOLS: McpTool[] = [
       ticket_id: number("The current ticket ID."),
       to: string("Recipient email address or comma-separated addresses."),
       subject: string("Email subject."),
-      body: string("Email body."),
+      body: string("Final email body as HTML. Use paragraphs and ordered/unordered lists. Do not include conversational commentary outside the email."),
     }, ["ticket_id", "to", "subject", "body"]),
     write: true,
   },
