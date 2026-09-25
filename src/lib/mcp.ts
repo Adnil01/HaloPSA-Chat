@@ -22,7 +22,8 @@ async function getHaloAccessToken(): Promise<string> {
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt > now + 60_000) return cachedToken.accessToken;
 
-  const tokenUrl = new URL(requiredEnv("HALO_TOKEN_URL"));
+  const tokenUrl = new URL(process.env.HALO_TOKEN_URL || `${requiredEnv("HALOPSA_BASE_URL").replace(/\/$/, "")}/auth/token`);
+  if (!tokenUrl.searchParams.has("tenant") && process.env.HALOPSA_TENANT) tokenUrl.searchParams.set("tenant", process.env.HALOPSA_TENANT);
   if (tokenUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
     throw new Error("HALO_TOKEN_URL must use HTTPS in production");
   }
@@ -34,10 +35,9 @@ async function getHaloAccessToken(): Promise<string> {
   try {
     const body = new URLSearchParams({
       grant_type: "client_credentials",
-      client_id: requiredEnv("HALO_CLIENT_ID"),
-      client_secret: requiredEnv("HALO_CLIENT_SECRET"),
+      client_id: requiredEnv("HALOPSA_CLIENT_ID"),
+      client_secret: requiredEnv("HALOPSA_CLIENT_SECRET"),
     });
-    if (process.env.HALO_SCOPE) body.set("scope", process.env.HALO_SCOPE);
 
     const response = await fetch(tokenUrl, {
       method: "POST",

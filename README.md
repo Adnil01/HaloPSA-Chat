@@ -34,11 +34,11 @@ https://your-domain.example/?ticket_id=<<ticket_id>>&agent_id=<<agent_id>>&ticke
 
 ## Environment variables
 
-Required server-side values are `OPENAI_API_KEY`, `HALO_TOKEN_URL`, `HALO_CLIENT_ID`, `HALO_CLIENT_SECRET`, and `MCP_URL`. `HALO_SCOPE` is optional. For a Halo-hosted cloud instance, the token URL is normally `https://YOUR-INSTANCE.halopsa.com/auth/token?tenant=YOUR_TENANT`; self-hosted instances omit the tenant query parameter. The MCP endpoint must accept the resulting OAuth bearer token. The browser only needs to provide `ticket_id`; the server retrieves the ticket through `get_one_ticket` by default and derives the assigned agent and ticket context from the MCP response.
+Required server-side values are `OPENAI_API_KEY`, `HALO_TOKEN_URL` (or `HALOPSA_BASE_URL`), `HALOPSA_CLIENT_ID`, `HALOPSA_CLIENT_SECRET`, and `MCP_URL`. If `HALO_TOKEN_URL` does not contain a tenant query parameter, `HALOPSA_TENANT` is added automatically. `HALOPSA_TENANT_DOMAIN` is available for deployment configuration and tenant identification. The MCP endpoint must accept the resulting OAuth bearer token. The browser only needs to provide `ticket_id`; the server retrieves the ticket through `get_one_ticket` by default and derives the assigned agent and ticket context from the MCP response.
 
 `MCP_GET_TICKET_TOOL`, `MCP_GET_AGENT_TOOL`, and `MCP_AGENT_PERSONA_FIELD` can be changed to match your MCP server. `MCP_GET_AGENT_TOOL` is optional. The default model is `gpt-4o-mini`; use `gpt-4o` when a more capable model is required.
 
-`CONFIRMATION_SECRET` is required for write operations. It must be a long random server-only value. The application will ask the technician to confirm before executing public notes, ticket actions, time logging, email, or custom CF runbooks.
+`CONFIRMATION_SECRET` is required for write operations. It must be a long random server-only value. The application will ask the technician to confirm before executing public notes, ticket actions, time logging, email, or custom CF runbooks. `RATE_LIMIT_MAX_REQUESTS` controls the per-minute request limit, and `TONE_CACHE_TTL_SECONDS` controls how long agent context is cached in server memory.
 
 If your actual runbook names differ from the recommended names, add their exact comma-separated names to `CF_ALLOWED_WRITE_TOOLS`. Do not allow every `CF_*` tool as writable; the MCP export contains many read-only reports as well as action-capable runbooks.
 
