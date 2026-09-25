@@ -16,7 +16,7 @@ Secure, stateless Next.js chatbot designed to run in a HaloPSA Custom Tab iframe
 
 ## Setup
 
-1. Install Node.js 20.9+.
+1. Install Node.js 20.9+!.
 2. Copy `.env.example` to `.env.local` and fill in the server-side values.
 3. Install dependencies and run the development server:
 
