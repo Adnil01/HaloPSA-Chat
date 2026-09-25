@@ -47,10 +47,11 @@ export const CUSTOM_ACTION_TOOLS: McpTool[] = [
     description: "Send an email through the configured HaloPSA runbook. Ask for confirmation before sending.",
     inputSchema: object({
       ticket_id: number("The current ticket ID."),
-      to: string("Recipient email address or comma-separated addresses."),
-      subject: string("Email subject."),
-      body: string("Final email body as HTML. Use paragraphs and ordered/unordered lists. Do not include conversational commentary outside the email."),
-    }, ["ticket_id", "to", "subject", "body"]),
+      note_html: string("Final email body as HTML. Use paragraphs and ordered/unordered lists. Do not include conversational commentary outside the email."),
+      outcome: string("Runbook outcome label, normally Send Email."),
+      who: string("Name of the actor recorded by the runbook."),
+      sendemail: { type: "boolean", description: "Set true to send the email." },
+    }, ["ticket_id", "note_html"]),
     write: true,
   },
   {
