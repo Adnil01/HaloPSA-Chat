@@ -37,6 +37,7 @@ async function getHaloAccessToken(): Promise<string> {
       grant_type: "client_credentials",
       client_id: requiredEnv("HALOPSA_CLIENT_ID"),
       client_secret: requiredEnv("HALOPSA_CLIENT_SECRET"),
+      scope: process.env.HALO_SCOPE || "all",
     });
 
     const response = await fetch(tokenUrl, {
