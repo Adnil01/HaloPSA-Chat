@@ -10,6 +10,7 @@ const MAX_MESSAGES = 30;
 const MAX_TOOL_ROUNDS = 5;
 const MAX_BODY_BYTES = 250_000;
 const MAX_OPENAI_TOOLS = 128;
+const MAX_CONFIRMATION_TOKEN_LENGTH = 16_000;
 const idPattern = /^[A-Za-z0-9_-]{1,64}$/;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const requestWindows = new Map<string, { startedAt: number; count: number }>();
@@ -130,7 +131,7 @@ export async function POST(request: Request) {
     if (messages.some(message => !message || !["user", "assistant"].includes(message.role) || !validText(message.content, 4000) || message.content.length < 1)) return invalidBody("Invalid message format.");
     if (messages[messages.length - 1].role !== "user") return invalidBody("The latest message must be from the technician.");
     const approved = body.approvedAction as ApprovedAction | undefined;
-    if (approved && (!validText(approved.token, 2000) || !validText(approved.toolName, 100) || !approved.args || typeof approved.args !== "object")) return invalidBody("Invalid approval data.");
+    if (approved && (!validText(approved.token, MAX_CONFIRMATION_TOKEN_LENGTH) || !validText(approved.toolName, 100) || !approved.args || typeof approved.args !== "object")) return invalidBody("Invalid approval data.");
 
     const ticketTool = process.env.MCP_GET_TICKET_TOOL || "get_one_ticket";
     const ticketLookupId = ticketTool === "get_one_ticket" ? Number(body.ticketId) : body.ticketId;
