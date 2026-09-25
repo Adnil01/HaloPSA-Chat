@@ -12,6 +12,7 @@ const MAX_BODY_BYTES = 250_000;
 const idPattern = /^[A-Za-z0-9_-]{1,64}$/;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const requestWindows = new Map<string, { startedAt: number; count: number }>();
+const toneCache = new Map<string, { expiresAt: number; value: unknown }>();
 
 type IncomingMessage = { role: "user" | "assistant"; content: string };
 type ApprovedAction = { token: string; toolName: string; args: Record<string, unknown> };
@@ -89,12 +90,18 @@ function rateLimited(request: Request): boolean {
   const current = requestWindows.get(key);
   if (!current || now - current.startedAt >= 60_000) { requestWindows.set(key, { startedAt: now, count: 1 }); return false; }
   current.count += 1;
-  return current.count > 30;
+  const limit = Number(process.env.RATE_LIMIT_MAX_REQUESTS || 30);
+  return current.count > (Number.isFinite(limit) && limit > 0 ? limit : 30);
+}
+
+function toneCacheTtlMs(): number {
+  const seconds = Number(process.env.TONE_CACHE_TTL_SECONDS || 0);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
 }
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.OPENAI_API_KEY || !process.env.MCP_URL || !process.env.HALO_TOKEN_URL) return Response.json({ error: "Assistant is not configured." }, { status: 503 });
+    if (!process.env.OPENAI_API_KEY || !process.env.MCP_URL || !(process.env.HALO_TOKEN_URL || process.env.HALOPSA_BASE_URL) || !process.env.HALOPSA_CLIENT_ID || !process.env.HALOPSA_CLIENT_SECRET) return Response.json({ error: "Assistant is not configured." }, { status: 503 });
     if (rateLimited(request)) return Response.json({ error: "Too many requests. Please wait a moment." }, { status: 429 });
     const declaredLength = Number(request.headers.get("content-length") || 0);
     if (declaredLength > MAX_BODY_BYTES) return invalidBody("The request is too large.");
@@ -123,9 +130,15 @@ export async function POST(request: Request) {
     ]);
     const derivedAgentId = body.agentId || findContextValue(ticket, ["agent_id", "assigned_agent_id", "agentid", "assignedagentid"]);
     const agentTool = process.env.MCP_GET_AGENT_TOOL;
-    const agent = agentTool && derivedAgentId !== undefined
-      ? await callMcpTool(agentTool, { agent_id: typeof derivedAgentId === "string" && /^\d+$/.test(derivedAgentId) ? Number(derivedAgentId) : derivedAgentId })
-      : {};
+    const toneCacheKey = derivedAgentId === undefined ? "" : String(derivedAgentId);
+    const cachedTone = toneCacheKey ? toneCache.get(toneCacheKey) : undefined;
+    const agent = cachedTone && cachedTone.expiresAt > Date.now()
+      ? cachedTone.value
+      : agentTool && derivedAgentId !== undefined
+        ? await callMcpTool(agentTool, { agent_id: typeof derivedAgentId === "string" && /^\d+$/.test(derivedAgentId) ? Number(derivedAgentId) : derivedAgentId })
+        : {};
+    const toneTtl = toneCacheTtlMs();
+    if (toneCacheKey && toneTtl > 0 && !cachedTone) toneCache.set(toneCacheKey, { expiresAt: Date.now() + toneTtl, value: agent });
     const tools = mergeMcpTools(liveTools);
     const toolByName = new Map(tools.map(tool => [tool.name.toLowerCase(), tool]));
     const personaField = process.env.MCP_AGENT_PERSONA_FIELD || "ai_persona_style";
