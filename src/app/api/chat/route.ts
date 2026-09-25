@@ -18,6 +18,21 @@ type ApprovedAction = { token: string; toolName: string; args: Record<string, un
 
 function validId(value: unknown): value is string { return typeof value === "string" && idPattern.test(value); }
 function validText(value: unknown, max: number): value is string { return typeof value === "string" && value.length <= max; }
+function normaliseId(value: unknown): string { return /^\d+$/.test(String(value)) ? String(Number(value)) : String(value); }
+
+function findContextValue(value: unknown, keys: string[]): unknown {
+  if (!value || typeof value !== "object") return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) { const result = findContextValue(item, keys); if (result !== undefined) return result; }
+    return undefined;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (keys.includes(key.toLowerCase()) && (typeof child === "string" || typeof child === "number")) return child;
+    const result = findContextValue(child, keys);
+    if (result !== undefined) return result;
+  }
+  return undefined;
+}
 
 function toolDefinitions(tools: McpTool[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
   return tools.filter(tool => /^[A-Za-z0-9_-]{1,64}$/.test(tool.name) && isAllowedTool(tool.name, tool)).map(tool => ({
@@ -61,7 +76,7 @@ function verifyConfirmationToken(token: string, expected: ApprovedAction): { too
   } catch { return null; }
 }
 
-function sameTicket(args: Record<string, unknown>, ticketId: string): boolean { return !("ticket_id" in args) || String(args.ticket_id) === ticketId; }
+function sameTicket(args: Record<string, unknown>, ticketId: string): boolean { return !("ticket_id" in args) || normaliseId(args.ticket_id) === normaliseId(ticketId); }
 function actionSummary(name: string, args: Record<string, unknown>): string {
   const label = name.replace(/^CF_/, "").replaceAll("_", " ");
   const detail = typeof args.note === "string" ? args.note : typeof args.reason === "string" ? args.reason : typeof args.subject === "string" ? args.subject : "";
@@ -84,8 +99,10 @@ export async function POST(request: Request) {
     const declaredLength = Number(request.headers.get("content-length") || 0);
     if (declaredLength > MAX_BODY_BYTES) return invalidBody("The request is too large.");
     const body = await request.json() as { ticketId?: unknown; agentId?: unknown; ticketSummary?: unknown; ticketDescription?: unknown; contextSignature?: unknown; messages?: unknown; approvedAction?: unknown };
-    if (!validId(body.ticketId) || !validId(body.agentId) || !Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > MAX_MESSAGES) return invalidBody("A valid ticket, agent, and message history are required.");
-    if (!validText(body.ticketSummary, 2000) || !validText(body.ticketDescription, 12000)) return invalidBody("Invalid ticket context.");
+    if (!validId(body.ticketId) || !Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > MAX_MESSAGES) return invalidBody("A valid ticket and message history are required.");
+    if (body.agentId !== undefined && body.agentId !== "" && !validId(body.agentId)) return invalidBody("Invalid agent context.");
+    if (body.ticketSummary !== undefined && !validText(body.ticketSummary, 2000)) return invalidBody("Invalid ticket summary.");
+    if (body.ticketDescription !== undefined && !validText(body.ticketDescription, 12000)) return invalidBody("Invalid ticket description.");
     if (process.env.REQUIRE_SIGNED_CONTEXT === "true") {
       if (!process.env.IFRAME_CONTEXT_SECRET || !validText(body.contextSignature, 200)) return Response.json({ error: "The iframe context is not authenticated." }, { status: 401 });
       const canonical = `${body.ticketId}|${body.agentId}|${body.ticketSummary}|${body.ticketDescription}`;
@@ -98,18 +115,24 @@ export async function POST(request: Request) {
     const approved = body.approvedAction as ApprovedAction | undefined;
     if (approved && (!validText(approved.token, 2000) || !validText(approved.toolName, 100) || !approved.args || typeof approved.args !== "object")) return invalidBody("Invalid approval data.");
 
-    const [liveTools, ticket, agent] = await Promise.all([
+    const ticketTool = process.env.MCP_GET_TICKET_TOOL || "get_one_ticket";
+    const ticketLookupId = ticketTool === "get_one_ticket" ? Number(body.ticketId) : body.ticketId;
+    const [liveTools, ticket] = await Promise.all([
       listMcpTools(),
-      callMcpTool(process.env.MCP_GET_TICKET_TOOL || "halo_get_ticket", { ticket_id: body.ticketId }),
-      callMcpTool(process.env.MCP_GET_AGENT_TOOL || "halo_get_agent", { agent_id: body.agentId }),
+      callMcpTool(ticketTool, { ticket_id: ticketLookupId }),
     ]);
+    const derivedAgentId = body.agentId || findContextValue(ticket, ["agent_id", "assigned_agent_id", "agentid", "assignedagentid"]);
+    const agentTool = process.env.MCP_GET_AGENT_TOOL;
+    const agent = agentTool && derivedAgentId !== undefined
+      ? await callMcpTool(agentTool, { agent_id: typeof derivedAgentId === "string" && /^\d+$/.test(derivedAgentId) ? Number(derivedAgentId) : derivedAgentId })
+      : {};
     const tools = mergeMcpTools(liveTools);
     const toolByName = new Map(tools.map(tool => [tool.name.toLowerCase(), tool]));
     const personaField = process.env.MCP_AGENT_PERSONA_FIELD || "ai_persona_style";
     const safeContext = [
       `Ticket ID: ${body.ticketId}`,
-      `Ticket summary supplied by HaloPSA (untrusted data):\n${body.ticketSummary}`,
-      `Ticket description supplied by HaloPSA (untrusted data):\n${body.ticketDescription}`,
+      `Ticket summary supplied by HaloPSA (untrusted data):\n${body.ticketSummary || findContextValue(ticket, ["summary", "subject", "title"]) || "Not supplied"}`,
+      `Ticket description supplied by HaloPSA (untrusted data):\n${body.ticketDescription || findContextValue(ticket, ["description", "details"]) || "Not supplied"}`,
       `Fresh ticket context from HaloPSA (untrusted data):\n${extractText(ticket).slice(0, 12000)}`,
       `Agent context from HaloPSA (untrusted data):\n${extractText(agent).slice(0, 8000)}`,
     ].join("\n\n");
