@@ -16,7 +16,7 @@ Secure, stateless Next.js chatbot designed to run in a HaloPSA Custom Tab iframe
 
 ## Setup
 
-1. Install Node.js 20.9+!.
+1. Install Node.js 20.9+.
 2. Copy `.env.example` to `.env.local` and fill in the server-side values.
 3. Install dependencies and run the development server:
 
@@ -34,9 +34,9 @@ https://your-domain.example/?ticket_id=<<ticket_id>>&agent_id=<<agent_id>>&ticke
 
 ## Environment variables
 
-Required server-side values are `OPENAI_API_KEY`, `HALO_TOKEN_URL`, `HALO_CLIENT_ID`, `HALO_CLIENT_SECRET`, and `MCP_URL`. `HALO_SCOPE` is optional. For a Halo-hosted cloud instance, the token URL is normally `https://YOUR-INSTANCE.halopsa.com/auth/token?tenant=YOUR_TENANT`; self-hosted instances omit the tenant query parameter. The MCP endpoint must accept the resulting OAuth bearer token.
+Required server-side values are `OPENAI_API_KEY`, `HALO_TOKEN_URL`, `HALO_CLIENT_ID`, `HALO_CLIENT_SECRET`, and `MCP_URL`. `HALO_SCOPE` is optional. For a Halo-hosted cloud instance, the token URL is normally `https://YOUR-INSTANCE.halopsa.com/auth/token?tenant=YOUR_TENANT`; self-hosted instances omit the tenant query parameter. The MCP endpoint must accept the resulting OAuth bearer token. The browser only needs to provide `ticket_id`; the server retrieves the ticket through `get_one_ticket` by default and derives the assigned agent and ticket context from the MCP response.
 
-`MCP_GET_TICKET_TOOL`, `MCP_GET_AGENT_TOOL`, and `MCP_AGENT_PERSONA_FIELD` can be changed to match your MCP server. The default model is `gpt-4o-mini`; use `gpt-4o` when a more capable model is required.
+`MCP_GET_TICKET_TOOL`, `MCP_GET_AGENT_TOOL`, and `MCP_AGENT_PERSONA_FIELD` can be changed to match your MCP server. `MCP_GET_AGENT_TOOL` is optional. The default model is `gpt-4o-mini`; use `gpt-4o` when a more capable model is required.
 
 `CONFIRMATION_SECRET` is required for write operations. It must be a long random server-only value. The application will ask the technician to confirm before executing public notes, ticket actions, time logging, email, or custom CF runbooks.
 
