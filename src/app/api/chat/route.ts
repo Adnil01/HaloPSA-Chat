@@ -89,6 +89,17 @@ function verifyConfirmationToken(token: string, expected: ApprovedAction): { too
 }
 
 function sameTicket(args: Record<string, unknown>, ticketId: string): boolean { return !("ticket_id" in args) || normaliseId(args.ticket_id) === normaliseId(ticketId); }
+function bindCurrentTicketId(toolName: string, args: Record<string, unknown>, tool: McpTool, ticketId: string): { args?: Record<string, unknown>; error?: string } {
+  const properties = tool.inputSchema?.properties;
+  const schemaHasTicketId = Boolean(properties && typeof properties === "object" && "ticket_id" in properties);
+  const isCustomTicketTool = toolName.startsWith("CF_");
+  if (!schemaHasTicketId && !isCustomTicketTool) return { args };
+
+  const numericTicketId = Number(ticketId);
+  if (!Number.isSafeInteger(numericTicketId) || numericTicketId < 1) return { error: "The current ticket ID is not numeric." };
+  if (args.ticket_id !== undefined && args.ticket_id !== null && normaliseId(args.ticket_id) !== normaliseId(ticketId)) return { error: "The operation targeted a different ticket." };
+  return { args: { ...args, ticket_id: numericTicketId } };
+}
 function actionSummary(name: string, args: Record<string, unknown>): string {
   const label = name.replace(/^CF_/, "").replaceAll("_", " ");
   const detail = typeof args.note === "string" ? args.note : typeof args.reason === "string" ? args.reason : typeof args.subject === "string" ? args.subject : "";
@@ -168,10 +179,11 @@ export async function POST(request: Request) {
     if (approved) {
       const verified = verifyConfirmationToken(approved.token, approved);
       const tool = toolByName.get(approved.toolName.toLowerCase());
-      if (!verified || !tool || !isAllowedTool(approved.toolName, tool) || !isWriteTool(approved.toolName, tool) || !sameTicket(verified.args, body.ticketId)) return Response.json({ error: "The approval is invalid or expired." }, { status: 403 });
-      chat.push({ role: "assistant", content: null, tool_calls: [{ id: verified.toolCallId, type: "function", function: { name: approved.toolName, arguments: JSON.stringify(verified.args) } }] });
+      const boundApproved = verified && tool ? bindCurrentTicketId(approved.toolName, verified.args, tool, body.ticketId) : { error: "The approval is invalid or expired." };
+      if (!verified || !tool || !boundApproved.args || !isAllowedTool(approved.toolName, tool) || !isWriteTool(approved.toolName, tool) || !sameTicket(boundApproved.args, body.ticketId)) return Response.json({ error: boundApproved.error || "The approval is invalid or expired." }, { status: 403 });
+      chat.push({ role: "assistant", content: null, tool_calls: [{ id: verified.toolCallId, type: "function", function: { name: approved.toolName, arguments: JSON.stringify(boundApproved.args) } }] });
       let result: unknown;
-      try { result = await callMcpTool(approved.toolName, verified.args); } catch { result = { error: "The HaloPSA operation failed." }; }
+      try { result = await callMcpTool(approved.toolName, boundApproved.args); } catch { result = { error: "The HaloPSA operation failed." }; }
       chat.push({ role: "tool", tool_call_id: verified.toolCallId, content: extractText(result).slice(0, 16000) });
       completion = await openai.chat.completions.create({ model: process.env.OPENAI_MODEL || "gpt-4o-mini", messages: chat, tools: definitions.length ? definitions : undefined, tool_choice: definitions.length ? "auto" : undefined, temperature: 0.2 });
     } else {
@@ -189,6 +201,9 @@ export async function POST(request: Request) {
         if (!tool || !isAllowedTool(toolCall.function.name, tool)) { chat.push({ role: "tool", tool_call_id: toolCall.id, content: "This tool is not permitted by the application." }); continue; }
         let args: Record<string, unknown>;
         try { args = JSON.parse(toolCall.function.arguments || "{}"); } catch { args = {}; }
+        const bound = bindCurrentTicketId(toolCall.function.name, args, tool, body.ticketId);
+        if (!bound.args) { chat.push({ role: "tool", tool_call_id: toolCall.id, content: bound.error || "The operation could not be bound to the current ticket." }); continue; }
+        args = bound.args;
         if (!sameTicket(args, body.ticketId)) { chat.push({ role: "tool", tool_call_id: toolCall.id, content: "The operation was blocked because it targeted a different ticket." }); continue; }
         if (isWriteTool(toolCall.function.name, tool)) {
           if (!confirmationSecret()) return Response.json({ error: "Write actions require CONFIRMATION_SECRET to be configured." }, { status: 503 });
