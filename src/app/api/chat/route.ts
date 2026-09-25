@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const MAX_MESSAGES = 30;
 const MAX_TOOL_ROUNDS = 5;
 const MAX_BODY_BYTES = 250_000;
+const MAX_OPENAI_TOOLS = 128;
 const idPattern = /^[A-Za-z0-9_-]{1,64}$/;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const requestWindows = new Map<string, { startedAt: number; count: number }>();
@@ -36,7 +37,16 @@ function findContextValue(value: unknown, keys: string[]): unknown {
 }
 
 function toolDefinitions(tools: McpTool[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
-  return tools.filter(tool => /^[A-Za-z0-9_-]{1,64}$/.test(tool.name) && isAllowedTool(tool.name, tool)).map(tool => ({
+  const allowedTools = tools
+    .filter(tool => /^[A-Za-z0-9_-]{1,64}$/.test(tool.name) && isAllowedTool(tool.name, tool))
+    .sort((left, right) => {
+      // Keep write actions and the built-in tools available before the large
+      // collection of read-only CF report tools returned by HaloPSA.
+      const priority = (tool: McpTool) => isWriteTool(tool.name, tool) ? 0 : tool.name.startsWith("CF_") ? 2 : 1;
+      return priority(left) - priority(right);
+    })
+    .slice(0, MAX_OPENAI_TOOLS);
+  return allowedTools.map(tool => ({
     type: "function",
     function: {
       name: tool.name,

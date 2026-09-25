@@ -9,6 +9,7 @@ Secure, stateless Next.js chatbot designed to run in a HaloPSA Custom Tab iframe
 - Stateless chat requests; no application database
 - MCP tool discovery and OpenAI function-calling loop
 - Built-in HaloPSA tools plus allowlisted custom CF runbooks
+- Automatic prioritisation of tools to stay within OpenAI's 128-tool limit
 - Server-enforced confirmation for write operations
 - Dynamic agent persona and ticket context fetched through MCP
 - Strict iframe-aware security headers
