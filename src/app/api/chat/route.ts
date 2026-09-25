@@ -17,7 +17,7 @@ const requestWindows = new Map<string, { startedAt: number; count: number }>();
 const toneCache = new Map<string, { expiresAt: number; value: unknown }>();
 
 type IncomingMessage = { role: "user" | "assistant"; content: string };
-type ApprovedAction = { token: string; toolName: string; args: Record<string, unknown> };
+type ApprovedAction = { token: string; toolName: string; args?: Record<string, unknown> };
 
 function validId(value: unknown): value is string { return typeof value === "string" && idPattern.test(value); }
 function validText(value: unknown, max: number): value is string { return typeof value === "string" && value.length <= max; }
@@ -75,7 +75,7 @@ function createConfirmationToken(toolCallId: string, toolName: string, args: Rec
   return `${payload}.${sign(payload)}`;
 }
 
-function verifyConfirmationToken(token: string, expected: ApprovedAction): { toolCallId: string } | null {
+function verifyConfirmationToken(token: string, expected: ApprovedAction): { toolCallId: string; args: Record<string, unknown> } | null {
   if (!confirmationSecret()) return null;
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return null;
@@ -83,8 +83,8 @@ function verifyConfirmationToken(token: string, expected: ApprovedAction): { too
   if (signature.length !== expectedSignature.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) return null;
   try {
     const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: unknown; toolCallId?: unknown; toolName?: unknown; args?: unknown };
-    if (typeof decoded.exp !== "number" || decoded.exp < Date.now() || decoded.toolName !== expected.toolName || JSON.stringify(decoded.args) !== JSON.stringify(expected.args) || typeof decoded.toolCallId !== "string") return null;
-    return { toolCallId: decoded.toolCallId };
+    if (typeof decoded.exp !== "number" || decoded.exp < Date.now() || decoded.toolName !== expected.toolName || !decoded.args || typeof decoded.args !== "object" || Array.isArray(decoded.args) || typeof decoded.toolCallId !== "string") return null;
+    return { toolCallId: decoded.toolCallId, args: decoded.args as Record<string, unknown> };
   } catch { return null; }
 }
 
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
     if (messages.some(message => !message || !["user", "assistant"].includes(message.role) || !validText(message.content, 4000) || message.content.length < 1)) return invalidBody("Invalid message format.");
     if (messages[messages.length - 1].role !== "user") return invalidBody("The latest message must be from the technician.");
     const approved = body.approvedAction as ApprovedAction | undefined;
-    if (approved && (!validText(approved.token, MAX_CONFIRMATION_TOKEN_LENGTH) || !validText(approved.toolName, 100) || !approved.args || typeof approved.args !== "object")) return invalidBody("Invalid approval data.");
+    if (approved && (!validText(approved.token, MAX_CONFIRMATION_TOKEN_LENGTH) || !validText(approved.toolName, 100))) return invalidBody("Invalid approval data.");
 
     const ticketTool = process.env.MCP_GET_TICKET_TOOL || "get_one_ticket";
     const ticketLookupId = ticketTool === "get_one_ticket" ? Number(body.ticketId) : body.ticketId;
@@ -168,10 +168,10 @@ export async function POST(request: Request) {
     if (approved) {
       const verified = verifyConfirmationToken(approved.token, approved);
       const tool = toolByName.get(approved.toolName.toLowerCase());
-      if (!verified || !tool || !isAllowedTool(approved.toolName, tool) || !isWriteTool(approved.toolName, tool) || !sameTicket(approved.args, body.ticketId)) return Response.json({ error: "The approval is invalid or expired." }, { status: 403 });
-      chat.push({ role: "assistant", content: null, tool_calls: [{ id: verified.toolCallId, type: "function", function: { name: approved.toolName, arguments: JSON.stringify(approved.args) } }] });
+      if (!verified || !tool || !isAllowedTool(approved.toolName, tool) || !isWriteTool(approved.toolName, tool) || !sameTicket(verified.args, body.ticketId)) return Response.json({ error: "The approval is invalid or expired." }, { status: 403 });
+      chat.push({ role: "assistant", content: null, tool_calls: [{ id: verified.toolCallId, type: "function", function: { name: approved.toolName, arguments: JSON.stringify(verified.args) } }] });
       let result: unknown;
-      try { result = await callMcpTool(approved.toolName, approved.args); } catch { result = { error: "The HaloPSA operation failed." }; }
+      try { result = await callMcpTool(approved.toolName, verified.args); } catch { result = { error: "The HaloPSA operation failed." }; }
       chat.push({ role: "tool", tool_call_id: verified.toolCallId, content: extractText(result).slice(0, 16000) });
       completion = await openai.chat.completions.create({ model: process.env.OPENAI_MODEL || "gpt-4o-mini", messages: chat, tools: definitions.length ? definitions : undefined, tool_choice: definitions.length ? "auto" : undefined, temperature: 0.2 });
     } else {
