@@ -123,7 +123,7 @@ function escapeHtml(value: string): string {
 }
 function formatEmailBody(value: string): string {
   if (/<[a-z][\s\S]*>/i.test(value)) return value;
-  const lines = value.replaceAll("\r", "").split("\n");
+  const lines = value.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n").replaceAll("\r", "").split("\n");
   const output: string[] = [];
   let inOrderedList = false;
   const closeList = () => { if (inOrderedList) { output.push("</ol>", "<br />"); inOrderedList = false; } };
@@ -246,9 +246,10 @@ export async function POST(request: Request) {
       const tool = toolByName.get(approved.toolName.toLowerCase());
       const boundApproved = verified && tool ? bindCurrentTicketId(approved.toolName, verified.args, tool, body.ticketId) : { error: "The approval is invalid or expired." };
       if (!verified || !tool || !boundApproved.args || !isAllowedTool(approved.toolName, tool) || !isWriteTool(approved.toolName, tool) || !sameTicket(boundApproved.args, body.ticketId)) return Response.json({ error: boundApproved.error || "The approval is invalid or expired." }, { status: 403 });
-      chat.push({ role: "assistant", content: null, tool_calls: [{ id: verified.toolCallId, type: "function", function: { name: approved.toolName, arguments: JSON.stringify(boundApproved.args) } }] });
+      const approvedArgs = normaliseToolArguments(approved.toolName, boundApproved.args, endUserName, assignedAgentName);
+      chat.push({ role: "assistant", content: null, tool_calls: [{ id: verified.toolCallId, type: "function", function: { name: approved.toolName, arguments: JSON.stringify(approvedArgs) } }] });
       let result: unknown;
-      try { result = await callMcpTool(approved.toolName, boundApproved.args); } catch { result = { error: "The HaloPSA operation failed." }; }
+      try { result = await callMcpTool(approved.toolName, approvedArgs); } catch { result = { error: "The HaloPSA operation failed." }; }
       chat.push({ role: "tool", tool_call_id: verified.toolCallId, content: extractText(result).slice(0, 16000) });
       completion = await openai.chat.completions.create({ model: process.env.OPENAI_MODEL || "gpt-4o-mini", messages: chat, tools: definitions.length ? definitions : undefined, tool_choice: definitions.length ? "auto" : undefined, temperature: 0.2 });
     } else {
