@@ -37,7 +37,7 @@ https://your-domain.example/?ticket_id=<<ticket_id>>&agent_id=<<agent_id>>&ticke
 
 Required server-side values are `OPENAI_API_KEY`, `HALOPSA_BASE_URL`, `HALO_TOKEN_URL` (or a token URL that can provide the base host), `HALOPSA_CLIENT_ID`, `HALOPSA_CLIENT_SECRET`, and `MCP_URL`. If `HALO_TOKEN_URL` does not contain a tenant query parameter, `HALOPSA_TENANT` is added automatically. `HALOPSA_TENANT_DOMAIN` is available for deployment configuration and tenant identification. The MCP endpoint must accept the resulting OAuth bearer token. The browser only needs to provide `ticket_id`; the server retrieves full ticket details and history through the configured MCP ticket tool, which defaults to `get_one_ticket`.
 
-`MCP_GET_TICKET_TOOL`, `MCP_GET_AGENT_TOOL`, and `MCP_AGENT_PERSONA_FIELD` can be changed to match your MCP server. `MCP_GET_AGENT_TOOL` is optional. The default model is `gpt-4o-mini`; use `gpt-4o` when a more capable model is required.
+`MCP_GET_TICKET_TOOL`, `MCP_GET_AGENT_TOOL`, and `MCP_AGENT_PERSONA_FIELD` can be changed to match your MCP server. The default technician communication-style field is `CFTechnicianCommunicationStyle`; `MCP_GET_AGENT_TOOL` is optional. The default model is `gpt-4o-mini`; use `gpt-4o` when a more capable model is required.
 
 `CONFIRMATION_SECRET` is required for write operations. It must be a long random server-only value. The application will ask the technician to confirm before executing public notes, ticket actions, time logging, email, or custom CF runbooks. `RATE_LIMIT_MAX_REQUESTS` controls the per-minute request limit, and `TONE_CACHE_TTL_SECONDS` controls how long agent context is cached in server memory.
 
