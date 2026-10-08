@@ -46,6 +46,7 @@ async function getHaloAccessToken(): Promise<string> {
       body,
       signal: controller.signal,
       cache: "no-store",
+      redirect: "error",
     });
     if (!response.ok) throw new Error(`Halo OAuth token request failed (${response.status})`);
     const payload = await response.json() as { access_token?: unknown; expires_in?: unknown };
@@ -64,18 +65,29 @@ export async function withMcp<T>(operation: (client: Client) => Promise<T>): Pro
   const url = new URL(requiredEnv("MCP_URL"));
   if (url.protocol !== "https:" && process.env.NODE_ENV === "production") throw new Error("MCP_URL must use HTTPS in production");
   const token = await getHaloAccessToken();
-  const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers: { Authorization: `Bearer ${token}` } } });
+  const transport = new StreamableHTTPClientTransport(url, {
+    requestInit: { headers: { Authorization: `Bearer ${token}` }, redirect: "error", cache: "no-store" },
+    fetch: (input, init) => fetch(input, { ...init, redirect: "error", signal: init?.signal
+      ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs())]) : AbortSignal.timeout(timeoutMs()) }),
+  });
   const client = new Client({ name: "halopsa-chat-integration", version: "1.0.0" });
-  try { await client.connect(transport); return await operation(client); }
+  try { await client.connect(transport, { timeout: timeoutMs() }); return await operation(client); }
   finally { await client.close().catch(() => undefined); }
 }
 
-export async function listMcpTools() { return withMcp(async client => (await client.listTools()).tools as McpTool[]); }
-export async function callMcpTool(name: string, args: Record<string, unknown>) { return withMcp(client => client.callTool({ name, arguments: args })); }
-
-const body = new URLSearchParams({
-  grant_type: "client_credentials",
-  client_id: requiredEnv("HALOPSA_CLIENT_ID"),
-  client_secret: requiredEnv("HALOPSA_CLIENT_SECRET"),
-  scope: process.env.HALO_SCOPE || "all",
-});
+export async function listMcpTools() {
+  return withMcp(async client => {
+    const tools: McpTool[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      const result = await client.listTools(cursor ? { cursor } : undefined, { timeout: timeoutMs() });
+      tools.push(...result.tools as McpTool[]);
+      cursor = result.nextCursor;
+      if (!cursor) return tools;
+    }
+    throw new Error("MCP tool catalog exceeds the pagination limit");
+  });
+}
+export async function callMcpTool(name: string, args: Record<string, unknown>) {
+  return withMcp(client => client.callTool({ name, arguments: args }, undefined, { timeout: timeoutMs(), maxTotalTimeout: timeoutMs() }));
+}

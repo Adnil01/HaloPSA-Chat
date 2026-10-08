@@ -47,7 +47,7 @@ export const CUSTOM_ACTION_TOOLS: McpTool[] = [
     description: "Send an email through the configured HaloPSA runbook. Ask for confirmation before sending.",
     inputSchema: object({
       ticket_id: number("The current ticket ID."),
-      note_html: string("Final email body as HTML. Use paragraphs and ordered/unordered lists. Do not include conversational commentary outside the email."),
+      note_html: string("Final email body as plain text. Use paragraphs and numbered lists; the application formats safe HTML before confirmation. Do not include conversational commentary outside the email."),
       outcome: string("Runbook outcome label, normally Send Email."),
       who: string("Name of the actor recorded by the runbook."),
       sendemail: { type: "boolean", description: "Set true to send the email." },
@@ -82,24 +82,22 @@ export const CUSTOM_ACTION_TOOLS: McpTool[] = [
 
 export function mergeMcpTools(liveTools: McpTool[]): McpTool[] {
   const byName = new Map<string, McpTool>();
-  for (const tool of [...BUILT_IN_TOOLS, ...CUSTOM_ACTION_TOOLS, ...liveTools]) byName.set(tool.name, tool);
+  // Expose only deployed tools. MCP hints never override the local write policy.
+  for (const tool of liveTools) byName.set(tool.name, tool);
   return [...byName.values()];
 }
 
 export function isWriteTool(toolName: string, tool?: McpTool): boolean {
   if (tool?.write === true) return true;
-  if (tool?.readOnly === true || tool?.annotations?.readOnlyHint === true) return false;
-  const configured = (process.env.CF_ALLOWED_WRITE_TOOLS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
-  return [
-    "add_note_to_ticket", "action_ticket", "get_matches", "apply_suggestion", "assign_to_me",
-    "create_ticket", "log_time", "log_service_request",
-  ].includes(toolName) || toolName === "CF_sendemail" || /^CF_(Post_Private_Note|Reassign_Ticket|Resolve_Ticket|Escalate_Ticket)$/i.test(toolName) || configured.includes(toolName.toLowerCase());
+  const known = [...BUILT_IN_TOOLS, ...CUSTOM_ACTION_TOOLS].find(item => item.name === toolName);
+  // Unknown tools require confirmation even if the MCP server calls them reads.
+  return !known || known.readOnly !== true;
 }
 
 export function isAllowedTool(toolName: string, tool?: McpTool): boolean {
-  if (toolName.startsWith("CF_")) {
-    const configured = (process.env.CF_ALLOWED_WRITE_TOOLS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
-    return CUSTOM_ACTION_TOOLS.some(t => t.name.toLowerCase() === toolName.toLowerCase()) || configured.includes(toolName.toLowerCase()) || tool?.readOnly === true || tool?.annotations?.readOnlyHint === true;
-  }
-  return BUILT_IN_TOOLS.some(t => t.name === toolName);
+  // These operate as the service identity and cannot safely represent the technician.
+  if (["get_user_info", "get_assigned_tickets", "assign_to_me", "log_time", "create_ticket", "log_service_request"].includes(toolName)) return false;
+  const explicit = (process.env.MCP_ALLOWED_TOOLS || "").split(",").map(value => value.trim()).filter(Boolean);
+  const defaults = ["get_one_ticket", "get_knowledge", "get_one_article", "add_note_to_ticket", "action_ticket", "get_matches", "apply_suggestion", ...CUSTOM_ACTION_TOOLS.map(item => item.name)];
+  return Boolean(tool) && (defaults.includes(toolName) || explicit.includes(toolName));
 }
