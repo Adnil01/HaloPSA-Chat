@@ -62,6 +62,7 @@ test("write requires explicit approval despite readOnly hints; replay and cross-
   assert.equal((await POST(request(value, approved))).status, 200);
   assert.equal((await POST(request(value, approved))).status, 403);
   assert.equal(upstreamCalls.filter(call => call.name === "CF_sendemail").length, 1);
+  assert.deepEqual(upstreamCalls.find(call => call.name === "CF_sendemail")?.args, data.confirmationRequired.args);
 });
 
 test("changing forwarded IP does not bypass agent rate limits", async () => {

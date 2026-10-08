@@ -18,14 +18,15 @@ export function prepareArgs(tool: McpTool, value: unknown, context: Context): Re
     for (const [name, child] of Object.entries(value)) {
       if (["__proto__", "constructor", "prototype"].includes(name)) throw new RequestError(400, "Invalid tool arguments.");
       if (/ticket.*ids?|ids?.*ticket/i.test(name)) {
-        if (depth !== 0 || name !== "ticket_id" || String(child) !== context.ticketId) throw new RequestError(403, "The operation targeted a different ticket.");
+        if (depth !== 0 || name !== "ticket_id" || (child !== null && child !== undefined && String(child) !== context.ticketId)) throw new RequestError(403, "The operation targeted a different ticket.");
       }
       inspect(child, depth + 1);
     }
   }
   inspect(value, 0);
   const args = { ...value };
-  if (ticketTools.has(tool.name) || tool.name.startsWith("CF_")) args.ticket_id = Number(context.ticketId);
+  const schemaHasTicket = isObject(tool.inputSchema?.properties) && "ticket_id" in tool.inputSchema.properties;
+  if (ticketTools.has(tool.name) || tool.name.startsWith("CF_") || schemaHasTicket) args.ticket_id = Number(context.ticketId);
   try {
     if (!tool.inputSchema || !ajv.validate(tool.inputSchema, args)) throw new RequestError(400, "Tool arguments do not match the deployed schema.");
   } catch (error) {
