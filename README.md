@@ -45,7 +45,7 @@ npm run build
 npm audit --audit-level=high
 ```
 
-If bootstrapping without a lockfile, run `npm install` once and commit the resolved `package-lock.json` after validation. CI temporarily supports this bootstrap and exports the lockfile as an artifact. Direct dependencies are pinned; the lockfile freezes transitive dependencies. CI installs the patched versions, tests authentication/authorization, replay, history tampering, schemas and body limits, and runs the build and audit. Dependabot checks npm and action updates weekly. No live Halo/OpenAI credentials are needed for tests or builds.
+Direct dependencies are pinned; the committed lockfile freezes transitive dependencies. A PostCSS override updates Next.js's vulnerable transitive dependency without requiring a framework major upgrade. CI installs the patched versions, tests authentication/authorization, replay, history tampering, schemas and body limits, and runs the build and audit. Dependabot checks npm and action updates weekly. No live Halo/OpenAI credentials are needed for tests or builds.
 
 Exact-tenant framing and per-request CSP script nonces require dynamic rendering. Frame origins must be HTTPS without paths/wildcards. For development use `APP_ORIGIN=http://localhost:3000` and the memory store; signed launches remain mandatory.
 

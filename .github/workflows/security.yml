@@ -26,6 +26,9 @@ jobs:
           name: resolved-lockfile
           path: package-lock.json
           if-no-files-found: error
+      - name: Export public lockfile text for review
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const b = fs.readFileSync('package-lock.json').toString('base64'); for (let i=0;i<b.length;i+=8000) console.log('LOCKFILE_CHUNK:'+b.slice(i,i+8000));"
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
