@@ -5,6 +5,7 @@ import { authenticate, signPayload, historyToken, restoreHistory, createConfirma
 import { enforceRateLimit, takeApproval } from "../src/lib/security-store.ts";
 import { isWriteTool, isAllowedTool, mergeMcpTools } from "../src/lib/tool-catalog.ts";
 import { prepareArgs } from "../src/lib/tool-policy.ts";
+import { issueAuthorizedLaunch } from "../src/lib/launch.ts";
 
 process.env.APP_ORIGIN = "https://assistant.example.com";
 process.env.IFRAME_CONTEXT_SECRET = "test-context-secret-".repeat(3);
@@ -122,4 +123,25 @@ test("body byte limit is enforced without content-length and with chunked input"
   await assert.rejects(() => readJson(new Request("https://assistant.example/api/chat", init), 100), { status: 413 });
   await assert.rejects(() => readJson(new Request("https://assistant.example/api/chat", { method: "POST", body: "{}" }), 100), { status: 415 });
   await assert.rejects(() => readJson(new Request("https://assistant.example/api/chat", { method: "POST", body: "oops", headers: { "content-type": "application/json" } }), 100), { status: 400 });
+});
+
+test("authorized launch uses a fragment token with the expected identity and permissions", () => {
+  const url = new URL(issueAuthorizedLaunch({ ticketId: "2186", agentId: "14", tools: ["get_one_ticket"] }));
+  assert.equal(url.searchParams.has("context_token"), false);
+  const token = new URLSearchParams(url.hash.slice(1)).get("context_token");
+  const authenticated = authenticate(new Request(`${url.origin}/api/chat`, { headers: { authorization: `Bearer ${token}` } }));
+  assert.equal(authenticated.ticketId, "2186");
+  assert.equal(authenticated.agentId, "14");
+  assert.deepEqual(authenticated.tools, ["get_one_ticket"]);
+  assert.throws(() => issueAuthorizedLaunch({ ticketId: "NaN", agentId: "14", tools: [] }));
+});
+
+test("long Unicode conversations stay within the API body limit and remain verifiable", () => {
+  const value = context();
+  const messages = Array.from({ length: 30 }, () => ({ role: "assistant" as const, content: "😀".repeat(2000) }));
+  const token = historyToken(messages, value);
+  assert.ok(Buffer.byteLength(token) < 200_000);
+  const restored = restoreHistory(token, value);
+  assert.ok(restored.length < messages.length);
+  assert.equal(restored.at(-1)?.content, messages.at(-1)?.content);
 });
